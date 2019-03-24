@@ -1,0 +1,811 @@
+---
+title: "DATA607 Fall 2018 Final Project"
+author: "John K. Hancock"
+date: "November 12, 2018"
+output: html_document
+always_allow_html: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r, include=FALSE}
+library(rvest)
+library(dplyr)
+library(tidyr)
+library(viridisLite)
+library(ggplot2)
+library(stringr)
+library(lubridate)
+library(GENEAread)
+library(boxoffice)
+library(XML)
+library(jsonlite)
+library(data.table)
+library(tm)
+library(wordcloud2)
+library(wordcloud)
+```
+
+
+
+###DATA 607 - Fall 2018 - Final Project: NYTimes Movie Reviews Sentiment Analysis
+
+###I.    Introduction
+###II.   Methodology
+###III.  Data Collection and Import the Data
+###IV.   Transform the Data
+###V.    Exploratory Data Analysis
+###VI.   Prepare Data for Analysis
+###VII.  TidyText Sentiment Analysis
+###VIII. Regression Analysis
+###IX.   Conclusion
+###X.    Citations
+
+
+
+
+###I. Introduction
+
+This project explores the sentiment analysis of NY Times movie reviews to access whether it's a predictor of the box office performance of the film.  The question that this project answers is: Does the sentiment of a NY Time movie review have an effect on a film's box office performance. 
+
+Re-written as  Hypothesis test, it would be:
+
+H0: The sentiment of a NY Times movie review has no effect on box office performance.
+HA: The sentiment of a NY Time movie review has an effect on box office performance.
+
+
+###II. Methodology
+
+
+A. Data was collected from two sources, the NY Times API and the website "the-numbers.com" which tracks box office statistics for all motion picture releases in the United States. 
+
+B. The data from these two sources were joined by a movie's title creating a single data frame. 
+
+C. Explore the new, combined data set.
+
+D. Prepare the data for Analysis
+
+E. Perform tidytext sentiment analysis using the NRC, Bing, and AFINN lexicon
+
+F. Perform regression analysis between the sentiment and box office performance
+
+G. Conclusion, Reflections, and Sources
+
+
+
+
+###III. Data Collection and Import the Data
+
+#### A. Webscrape the-numbers.com website.  
+
+Launched by Bruce Nash in 1997, the-numbers.com website tracks movie financial data.  Below, I scraped data for all 2018 domestic movie releases. 
+
+```{r}
+# url <- 'https://www.the-numbers.com/market/2018/top-grossing-movies'
+# 
+# movies<- url  %>% 
+#   read_html() %>%
+#   html_nodes(xpath = '//*[@id="page_filling_chart"]/table') %>% 
+#   html_table(fill = TRUE)
+# 
+# movies <- movies[[1]]
+# 
+# 
+# movies_df<- as.data.frame(movies)
+
+```
+
+
+
+#### B. Access the NYTimes API. 
+
+
+The following sections are taken from my Week 9 NYTimes API assignment, "Working with the NY Times API".
+
+Note, some of the code in this section has been commented out.  When I submitted the project proposal, I was able to access the NYTimes API and download the critics data.  However, on subsequent runs of this code, it was unable to make a connection to the NY Times API. I may have exceeded some sort of limit on accessing this API and downloading the data. Fortunately, at the time of my submission of the project proposal, I saved off the downloads from both the-numbers.com and NY Times webscrape and API into csv files and preserved them locally.Data Saved off into csv files:
+
+
+--DO NOT RUN--
+```{r}
+# NYTimes_KEY <- "3f11a8ef5cf94222beda574c715815e8"
+# baseURL = paste0("https://api.nytimes.com/svc/movies/v2/reviews/search.json?api-key=", NYTimes_KEY, sep="")
+
+```
+
+--DO NOT RUN--
+```{r}
+#Create an empty list called pages
+# pages <- list()
+# #create a for loop which makes 1000 calls to the API
+# for(i in seq(0,1000,2)){
+#   NY_TIMES_CRITICS <- fromJSON(paste0(baseURL, "&offset=", i))
+#   #Add the results of the calls to the pages list
+#   pages[[i+1]] <- NY_TIMES_CRITICS$results
+  
+#}
+```
+
+--DO NOT RUN--
+```{r}
+# NY_TIMES_CRITICS_df <- rbind_pages(pages)
+# dim(NY_TIMES_CRITICS_df)
+
+```
+
+--DO NOT RUN--
+```{r}
+# NY_TIMES_CRITICS_df <- NY_TIMES_CRITICS_df[!duplicated(NY_TIMES_CRITICS_df$link$url), ]
+# NY_TIMES_CRITICS_df$link
+
+```
+
+--DO NOT RUN--
+```{r}
+# Body <- list()
+# X_path = '//*[contains(concat( " ", @class, " " ), concat( " ", "css-1572rug", " " ))]'
+# for (i in seq(1,1017)){
+#     getContent <- read_html(NY_TIMES_CRITICS_df$link$url[i])
+#     articles <- html_nodes(getContent, xpath = X_path )
+#     Body[i] <- list(html_text(articles))
+#    
+#     
+#        
+# }
+```
+
+--DO NOT RUN--
+```{r}
+# for (i in seq(1, 1017)){
+#     NY_TIMES_CRITICS_df$Body[[i]] <- Body[[i]]
+# }
+# 
+
+
+```
+
+#### C. Import the Data from csv Files
+
+As stated earlier, I ran the data collection code earlier and preserved the data to two csv files for future reference.  In the code below, I loaded the data from the two csv files. 
+
+```{r}
+
+Box_Office_df <- read.csv('BoxOffice2018.csv')
+
+glimpse(Box_Office_df)
+```
+
+
+```{r}
+NYTIMES_Reviews_df <- read.csv('NYTimes.csv')
+glimpse(NYTIMES_Reviews_df)
+```
+
+
+
+
+#### IV. Transform the Data
+
+The goal of this section is to transform the two datasets and then combine the two datasets into one dataset, Movies. The Movies dataset will consist of the NY Time critics and reviews along with box office data from numbers-com. 
+
+First, I create a new dataset called NYTimes_Review by selecting and renaming three columns.  Additionally, I changed two of the columns to characters, leaving the critic variable as a factor.
+
+```{r}
+#Create a new tbl by selecting three columns and rename the columns
+NYTimes_Review <- NYTIMES_Reviews_df %>% 
+                  select(display_title,  byline, Body) %>% 
+                  rename(Title = display_title, Critic=byline, Review=Body )
+
+#convert the Title and Review variables as character                 
+NYTimes_Review$Title <- as.character(NYTimes_Review$Title)
+NYTimes_Review$Review <- as.character(NYTimes_Review$Review)
+
+
+glimpse(NYTimes_Review)
+
+```
+
+Data from the-numbers.com website:
+
+
+```{r}
+#Convert the date format to year, month, day
+Box_Office_df$ReleaseDate <- as.Date(Box_Office_df$ReleaseDate, format = "%m/%d/%Y")
+
+#Select and rename the columns scraped from the website, the-numbers.com for clearer names and limit the data to movies released in 2018.
+Box_Office <- Box_Office_df %>% 
+              select(Rank, Movie, Distributor, ReleaseDate, Genre, MPAA, X2018.Gross, Tickets.Sold) %>% 
+              rename(Title=Movie, Gross = X2018.Gross, Tickets = Tickets.Sold, Movie_Studio=Distributor) %>% 
+              filter(ReleaseDate > '2018-01-01')
+              
+
+Box_Office$Title <- as.character(Box_Office$Title)
+Box_Office$Gross <- as.numeric(gsub('\\$|,', '', Box_Office$Gross))
+Box_Office$Tickets<- as.numeric(gsub('\\$|,', '', Box_Office$Tickets))
+Box_Office$Rank <- as.numeric(as.character(Box_Office$Rank))
+
+glimpse(Box_Office)
+
+```
+
+The final step is to join the two datasets by the Title of the movie, and remove any entries where there is no critic or review
+
+```{r}
+
+Movies <- left_join(Box_Office, NYTimes_Review, by= 'Title')
+Movies <- Movies[!is.na(Movies$Critic) | !is.na(Movies$Review),]
+```
+
+
+Next, I checked the spelling names of the critics, and I see that A.O. Scott has two different spelling variations, "A. O. SCOTT" and "A.O. SCOTT".  It's a subtle difference but it will become important for Exploratory Data Analysis
+
+```{r}
+unique(Movies$Critic)
+```
+
+
+```{r}
+Movies<- Movies[!is.na(Movies$Review),]
+Movies$Critic <- (gsub('A.O. SCOTT', 'A. O. SCOTT', Movies$Critic))
+
+```
+
+
+##### V.   Exploratory Data Analysis
+
+######Frequency of Genres
+
+From the frequency chart below, we can see that Dramas are far and away the most prevelant of the movie genres, more than double than it closest genre, Documentary.
+
+
+```{r}
+ggplot(data=Movies, aes(x=Genre)) +
+    geom_bar(stat="count", color="blue", fill="gold") +
+    geom_text(stat='count', aes(label=..count..), hjust=1.5) +
+    labs(title="Frequency by Genres in Movies Dataset") +
+    theme(plot.title = element_text(hjust = 0.5)) +
+    coord_flip() 
+dev.copy(png,'genre_freq.png')
+dev.off()
+```
+
+
+For the NY Times critics, A.O.SCOTT has the most reviews in our dataset followed by JEANNETTE CATSOULIS and MANOHLA DARGIS.  These three critics along with GLENN KENNY and  BEN KENIGSBERG review movies across all genres whereas the remaining critics reviewed a limited range of the genres.
+
+
+
+```{r}
+critics <- Movies %>%
+           select(Critic, Genre) %>% 
+           arrange(Critic)
+
+ggplot(data=critics, aes(x = Critic, fill=Genre)) +
+    geom_bar(stat="count") +
+    labs(x="NY Times Critics", y="Movie Genres", title="NY Times Critics and Reviewed Genres") +
+    theme(plot.title = element_text(hjust = 0.5)) +
+    coord_flip()
+dev.copy(png,'critics_freq.png')
+dev.off()
+```
+
+The majority of the movies in this dataset are rated "R" by the MPAA
+
+```{r}
+options(scipen=5)
+
+ggplot(data=Movies, aes(x=MPAA)) +
+    geom_bar(stat="count", color="blue", fill="green") + 
+    theme(plot.title = element_text(hjust = 0.5)) +
+    labs(x="Movie Ratings", y="Frequency", title="Movies by MPAA Ratings") 
+
+```
+
+Finally, looking at the top ten highest box office gross movies, we see immediately that the top ten are dominated by Action or Adventure films.  The highest grossing movie for 2018 is "The Black Panther" at $700 million.
+
+
+
+```{r, fig.width=15,fig.height=7}
+topten <- Movies[Movies$Rank <=14,] %>% 
+          arrange(Gross)
+
+options(scipen=10)
+
+outfile = "C:/Users/jkhan/Documents/GitHub/DATA-607-Data-Acquisition-and-Management/Final Project/Final/plot2.png"
+
+ggplot(data=topten, aes(x=reorder(Title, -Gross), y=Gross, fill=Genre )) +
+     geom_bar(stat="identity", position=position_dodge()) +
+     theme(plot.title = element_text(hjust = 0.5)) +
+     geom_text(aes(label=paste('$',formatC(Gross, big.mark=',', format = 'f'))), position=position_dodge(width=.5), vjust=-1) +
+     labs(x="Movie Title", y="Box Office Gross", title="Top Ten Box Office for 2018")+
+     ggsave(outfile, height=7, width=20,dpi=300, limitsize = FALSE)
+
+
+```
+
+
+#####VI.  Prepare Data for Analysis
+
+
+One of the resources that I found most helpful was Data Camps' NLP tutorial by Debbie Liske, and their online course "Sentiment Analysis in R". 
+
+[Data Camp Sentiment Analysis in R](https://www.datacamp.com/courses/sentiment-analysis-in-r-the-tidy-way)
+
+[Machine Learning and NLP using R: Topic Modeling and Music Classification by Debbie Liske](https://www.datacamp.com/community/tutorials/ML-NLP-lyric-analysis)
+
+
+[Code from NLP Tutorial](https://www.datacamp.com/community/tutorials/R-nlp-machine-learning)
+
+Removing contractions and converting text to lower case
+
+```{r}
+#This function reverses contractions into full words
+remove.contractions <- function(doc) {
+    doc <- gsub("won't", "will not", doc)
+  doc <- gsub("can't", "can not", doc)
+  doc <- gsub("n't", " not", doc)
+  doc <- gsub("'ll", " will", doc)
+  doc <- gsub("'re", " are", doc)
+  doc <- gsub("'ve", " have", doc)
+  doc <- gsub("'m", " am", doc)
+  doc <- gsub("'d", " would", doc)
+  return(doc)
+}
+
+#Applied to the Movies$Review 
+Movies$Review<- sapply(Movies$Review, remove.contractions)
+#Reviews were set to lower case
+Movies$Review <- sapply(Movies$Review, tolower)
+
+```
+
+For sentiment analysis, I tried to remove words from the reviews that may have a negative sentiment but are used to describe the movie. For example, the word, "Marvel", carries positive sentiment, but it's also the name of a major motion picture studio. Reviews of these movies will inevitably contain multiple instances of this word which may impact the overall sentiment. For this, these words are removed from the Reviews. 
+
+```{r}
+undesirable_words <- c("marvel", "prison", "mystery", "prison", "joke", "death", "kill", "impossible", "plot", "monster")
+```
+
+
+####VII. TidyText Sentiment Analysis
+
+In the code block below, I used the function unnest_tokens by word on the Review variable.  This has the effect of parsing out every word from every Reivew into its own observation. I then remove the common stop-words, limiting it to only distinct words, and filter out the undesirable and short words.
+
+```{r}
+library(tidytext)
+
+tidy_reviews <- Movies  %>%
+  unnest_tokens(word, Review) %>%
+  anti_join(stop_words) %>%
+  distinct() %>%
+  filter(!word %in% undesirable_words) %>% 
+  filter(nchar(word) > 3)
+```
+
+The final result is 10 variables and 56,099 observations.
+
+```{r}
+dim(tidy_reviews)
+```
+
+In the following sections, I applied the three most common lexicon libraries, NRC, Bing, and AFINN to the tidy text data.
+
+
+######Senitment Lexicon -  NRC
+
+
+NRC from Saif Mohammad and Peter Turney. The NRC Emotion Lexicon is a list of English words and their associations with eight basic emotions (anger, fear, anticipation, trust, surprise, sadness, joy, and disgust) and two sentiments (negative and positive). The annotations were manually done by crowdsourcing. For more information, please see [NRC Word-Emotion Association Lexicon](https://saifmohammad.com/WebPages/NRC-Emotion-Lexicon.htm)
+
+
+```{r}
+#This code block takes the tidy_reviews dataframe and provides a count of the words per title. 
+totals <- tidy_reviews %>%
+  count(Title) %>%
+   rename(total_words = n)
+
+#Next the totals data frame is joined by Title with the tidy_reviews data frame to form movie_counts which is breaks out each word of the review into its own entry.
+movie_counts <- tidy_reviews %>%
+  left_join(totals, by = "Title")
+
+names(movie_counts)
+
+```
+
+
+In this code block, I execute the NRC sentiment by performing an inner join between the words in the Movie Reviews and the sentiments in the NRC lexicon.
+
+```{r, include=FALSE}
+critic_nrc_sentiment <- movie_counts %>%
+    inner_join(get_sentiments("nrc"))
+
+critic_nrc_sentiment %>%
+    count(Title, sentiment, sort = TRUE)
+
+```
+
+A unique look at the sentiments show all of the sentiments based on the words in the movie reviews variable.
+
+
+```{r}
+unique(critic_nrc_sentiment$sentiment)
+```
+
+##### NRC Negative Sentiment 
+
+In the code block below:
+
+- Grouping by Title and Sentiment, it provides a word count per sentiment
+- It then creates a percentage for each sentiment
+- Filters out where the negative sentiment is more than 5% of the total number of words.
+- Joined the negative sentiment data frame to the Movies data frame 
+
+```{r}
+negative_nrc_sentiment <- critic_nrc_sentiment %>%
+#Count the total words in each review
+    count(Title, sentiment, total_words) %>%
+    ungroup() %>%
+#Create a new variable percent which computes the sentiment divideded by the number of words
+    mutate(percent = n / total_words) %>%
+#Filter if the sentiment is negative and the percentage of negative sentiment is equal to or greater than 5%
+    filter(sentiment == "negative") %>%
+    filter(percent >= 0.05) %>% 
+    arrange(desc(percent))
+
+
+
+NRC_negative_sentiment_Box_Office <- left_join(negative_nrc_sentiment, Movies, by= 'Title')
+head(NRC_negative_sentiment_Box_Office,10)
+```
+
+In the plots below, I compared reviews with negative percentage of greater than 5% to that film's box office.  The second plot zooms in,
+
+```{r}
+ggplot(NRC_negative_sentiment_Box_Office , aes(x=percent*100, y=Gross/1000000, fill=sentiment, col=Genre)) + 
+    geom_point() +
+     theme(plot.title = element_text(hjust = 0.5)) +
+     labs(x="Negative Sentiment Percentage", y="Box Office Gross", title="Comparison of Negative Sentiment to Box Office")
+
+```
+
+
+```{r, warning=FALSE}
+ggplot(NRC_negative_sentiment_Box_Office , aes(x=percent*100, y=Gross/1000000, fill=sentiment, col=Genre)) + 
+    geom_point() +
+     theme(plot.title = element_text(hjust = 0.5)) +
+     labs(x="Negative Sentiment Percentage", y="Box Office Gross", title="Comparison of Negative Sentiment to Box Office (Zoomed)")+
+      ylim(c(0,.25))
+```
+
+
+
+
+
+
+```{r}
+positive_nrc_sentiment <- critic_nrc_sentiment %>%
+    count(Title, sentiment, total_words) %>%
+    ungroup() %>%
+    mutate(percent = n / total_words) %>%
+    filter(sentiment == "positive") %>%
+    filter(percent >= 0.05) %>% 
+    arrange(desc(percent))
+
+NRC_positive_sentiment_Box_Office <- left_join(positive_nrc_sentiment, Movies, by= 'Title')
+
+```
+
+
+```{r}
+ggplot(NRC_positive_sentiment_Box_Office , aes(x=percent*100, y=Gross/1000000, fill=sentiment, col=Genre)) + 
+    geom_point() 
+```
+
+
+
+```{r, warning=FALSE}
+ggplot(NRC_positive_sentiment_Box_Office, aes(x=percent*100, y=Gross/1000000, fill=sentiment, col=Genre)) +
+    geom_point() + 
+    ylim(c(0,.25))
+```
+
+
+
+
+#####Senitment Lexicon - BING
+
+The Bing lexicon was developed by Bing Liu and collaborators.  [Opinion Mining, Sentiment Analysis, and Opinion Spam Detection](https://www.cs.uic.edu/~liub/FBS/sentiment-analysis.html) The bing lexicon categorizes words in a binary fashion into positive and negative categories. 
+
+The same NRC workflow process was followed using the Bing lexicon
+
+
+```{r}
+critic_bing_sentiment <- movie_counts %>%
+    inner_join(get_sentiments("bing")) %>% 
+    count(Title, Genre, sentiment, sort = TRUE) %>%
+    ungroup()
+
+
+```
+
+
+BING negative sentiments
+
+```{r}
+BING_negative_sentiment <- critic_bing_sentiment %>%
+    group_by(Title) %>%
+    mutate(Total = sum(n), percent = n / Total) %>%
+    filter(sentiment == "negative") %>%
+    filter(percent >= 0.05) %>% 
+    arrange(desc(percent))
+
+```
+
+
+```{r}
+Bing_negative_sentiment_Box_Office <- left_join(BING_negative_sentiment , Movies, by= c('Title','Genre'))
+
+ggplot(Bing_negative_sentiment_Box_Office, aes(x=percent*100, y=Gross/1000000, fill=sentiment, col=Genre)) +
+    geom_point() +
+     theme(plot.title = element_text(hjust = 0.5)) +
+     labs(x="Bing Negative Sentiment Percentage", y="Box Office Gross", title="Comparison of Negative Sentiment to Box Office (Bing)")
+```
+
+```{r, warning=FALSE}
+ggplot(Bing_negative_sentiment_Box_Office, aes(x=percent*100, y=Gross/1000000, fill=sentiment, col=Genre)) +
+    geom_point() +
+     theme(plot.title = element_text(hjust = 0.5)) +
+     labs(x="Bing Negative Sentiment Percentage", y="Box Office Gross", title="Comparison of Negative Sentiment to Box Office (Bing)") + 
+    ylim(c(0,.25))
+```
+
+
+
+
+
+
+```{r}
+BING_positive_sentiment <- critic_bing_sentiment %>%
+    group_by(Title) %>%
+    mutate(Total = sum(n), percent = n / Total) %>%
+    filter(sentiment == "positive") %>%
+    filter(percent >= 0.05) %>% 
+    arrange(desc(percent))
+
+Bing_positive_sentiment_Box_Office <- left_join(BING_positive_sentiment , Movies, by= c('Title','Genre'))
+
+ggplot(Bing_positive_sentiment_Box_Office, aes(x=percent*100, y=Gross/1000000, fill=sentiment, col=Genre)) +
+    geom_point() +
+     theme(plot.title = element_text(hjust = 0.5)) +
+     labs(x="Bing Positive Sentiment Percentage", y="Box Office Gross", title="Comparison of Positive Sentiment to Box Office (Bing)")
+
+```
+
+```{r, warning=FALSE}
+ggplot(Bing_positive_sentiment_Box_Office, aes(x=percent*100, y=Gross/1000000, fill=sentiment, col=Genre)) +
+    geom_point() +
+     theme(plot.title = element_text(hjust = 0.5)) +
+     labs(x="Bing Positive Sentiment Percentage", y="Box Office Gross", title="Comparison of Positive Sentiment to Box Office (Bing)") + 
+    ylim(c(0,.25))
+```
+
+Bing Overall Sentiment
+
+Since the Bing lexicon provides a binary choice, I took a look at the overall difference between positive and negative sentiments.  In the code block below, the variable Total_Sentiment represents the difference between the positive and negative sentiment of the Review.  Note the film with the highest overall total sentiment was "A Wrinkle in Time", and the film with the lowest Total_sentiment was "Halloween".
+
+
+```{r}
+critic_bing_sentiment2 <- critic_bing_sentiment %>% 
+spread(sentiment, n, fill = 0) %>% 
+mutate(Total_sentiment = positive-negative) %>% 
+arrange(desc(Total_sentiment))
+
+critic_bing_total_sentiment <- left_join(critic_bing_sentiment2, Movies, by= c('Title','Genre'))
+head(critic_bing_total_sentiment,5)
+```
+
+```{r, warning=FALSE}
+ggplot(critic_bing_total_sentiment, aes(x=Total_sentiment, y=Gross/1000000, col=Genre)) +
+    geom_point() +
+     theme(plot.title = element_text(hjust = 0.5)) +
+     labs(x="Bing Positive Sentiment Percentage", y="Box Office Gross", title="Comparison of Positive Sentiment to Box Office (Bing)")+ 
+    ylim(c(0,.25))
+```
+
+The words driving the sentiment analysis are shown in the code and  visualization below. The conclusion that jumped out at me was that the words driving both the positive and negative sentiments may not be reflective of the review as a whole.  In reading a NY Times review, I noticed that they included a somewhat detailed summary of the movie.  
+
+Thus, words in the review reflect both the review and summary of the movie.  For example, a horror movie could be violent, have tension, fear, etc., but the review of the movie may be positive. 
+
+```{r}
+word_counts <- movie_counts %>%
+  inner_join(get_sentiments("bing")) %>%
+  count(word, sentiment)
+
+top_words <- word_counts %>%
+  group_by(sentiment) %>%
+  top_n(20) %>%
+  ungroup() %>%
+  mutate(word = reorder(word, n))
+
+ggplot(top_words, aes(x=word, y=n, fill = sentiment)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~sentiment, scales = "free") +
+  coord_flip()
+```
+
+######Senitment Lexicon - AFINN
+
+The third lexicon that I looked at is the AFINN lexicon.  The AFINN lexicon assigns words with a score that runs between -5 and 5, with negative scores indicating negative sentiment and positive scores indicating positive sentiment.(More information about AFINN)[http://www2.imm.dtu.dk/pubdb/views/publication_details.php?id=6010]
+
+Similar to the NRC and Bing workflows, I joined the words in each movie review to the AFINN lexicon by word. 
+
+```{r}
+critic_afinn_sentiment <- movie_counts %>%
+    inner_join(get_sentiments("afinn"))
+
+```
+
+
+
+As stated previously, the AFINN lexicon assigns words with a score that runs between -5 and 5.  In the code below grouping by the title of each movie, I was able to calccute a sentiment score for each film. 
+
+```{r}
+critic_afinn_sentiment_scores <-  critic_afinn_sentiment %>%
+                                  group_by(Title) %>% 
+                                  mutate(Total = sum(score)) %>%                                                
+                                  select(Rank,Title,Movie_Studio,ReleaseDate,Genre,MPAA,Gross,Tickets,Critic,total_words,Total) %>% 
+                                  distinct() %>%  
+                                  arrange(desc(Total))
+
+
+head(critic_afinn_sentiment_scores,5)
+```
+
+In the next two blocks, I was able to show the AFINN total score by genre and the box office gross by genre.  
+
+Horror movies have the lowest sentiment score from NY Time critics. However, as stated earlier, this could be due to the fact that the Times critics include summaries of the film in their reviews.  Horror movies, by their very nature, are going to have more words with a higher negative sentiment than a comedy or an Adventure film. 
+
+```{r}
+critic_sentiment_by_genre <- critic_afinn_sentiment_scores %>% 
+    group_by(Genre) %>% 
+    summarise(Total_by_Genre = sum(Total)) %>% 
+    select(Genre, Total_by_Genre) %>% 
+    arrange(desc(Total_by_Genre))
+
+
+ggplot(data=critic_sentiment_by_genre, aes(x=reorder(Genre, -Total_by_Genre), y=Total_by_Genre)) +
+     geom_bar(stat="identity", position=position_dodge(),  fill="red") +
+     theme(plot.title = element_text(hjust = 0.5)) +
+     labs(x="Genre", y="Sentiment Score by Critic", title="2018 AFINN Total Score by Genre")+
+    coord_flip()
+  
+```
+
+Regardless of whether the sentiment is driven by the critic's impression of the movie or a summary of the movie's content, this project is focused on whether the sentiment has any effect on the box office.  These two plots also show no cause/effect.  Movie genres, like Horror, Thriller/Suspense, Action, and Drama, have negative overall sentiment scores but they have positive box office gross. 
+
+
+```{r}
+Gross_by_Genre <- critic_afinn_sentiment_scores %>% 
+    group_by(Genre) %>% 
+    summarise(Genre_Gross = sum(Gross)) %>% 
+    select(Genre, Genre_Gross) %>% 
+    arrange(desc(Genre_Gross))
+
+
+ggplot(data=Gross_by_Genre, aes(x=reorder(Genre, -Genre_Gross), y=Genre_Gross/1000000)) +
+     geom_bar(stat="identity", position=position_dodge(), col="green", fill="green") +
+     theme(plot.title = element_text(hjust = 0.5)) +
+     labs(x="Genre", y="Box Office Gross (in millions)", title="2018 Box Office Gross by Genre")+
+    coord_flip()
+
+```
+
+
+
+
+####VIII. Correlation and Regression Analysis
+
+So far in the project, I have not address the Hypothesis test that I set up at the beginning. 
+
+
+H0: The sentiment of a NY Times movie review has no effect on box office performance.
+HA: The sentiment of a NY Time movie review has an effect on box office performance.
+
+
+The most definitive way to answer that question would be to look at the correlation between sentiment and box, and more precisely, use Simple Linear Regression to establish a relationsip.  
+
+
+None of the three lexicons, NRC, Bing, nor AFINN showed a strong corrleation between the sentiment of the movie and it's box office gross. Strong correlation would be +1 or -1 (for a negative correlation).  There is no correlation between sentiment and box office gross.
+
+#####NRC Correlation Scores
+
+```{r}
+cor(NRC_negative_sentiment_Box_Office$Gross, NRC_negative_sentiment_Box_Office$percent)
+```
+
+#####BING Correlation
+
+
+```{r}
+cor(critic_bing_total_sentiment$Gross, critic_bing_total_sentiment$Total_sentiment)
+```
+
+
+#####AFINN Correlation
+
+```{r}
+cor(critic_afinn_sentiment_scores$Gross, critic_afinn_sentiment_scores$Total)
+```
+
+#####Simple Linear Regression
+
+The p-values for each of the sentiment lexicons, (0.4054,0.154, and 0.642), are all >0.05. Such a large p-value suggests that changes in the predictor are not associated with changes in the response.  IOW, sentiment of a NY Times review does not have an affect on the movie's box office. Additionally, the R-squared values are all 0 (0.002947, 0.007472, 0.0007968) which means that none of the percentage of the response variable variation that is explained by a linear model.   
+
+In sum, we cannot reject the null hypothesis.
+
+```{r}
+Movie_Simple_LR_NRC <- lm(Gross~percent, data = NRC_negative_sentiment_Box_Office)
+summary(Movie_Simple_LR_NRC)
+```
+
+```{r}
+Movie_Simple_LR_BING <- lm(Gross~Total_sentiment, data = critic_bing_total_sentiment)
+summary(Movie_Simple_LR_BING )
+```
+
+```{r}
+Movie_Simple_LR_AFINN <- lm(Gross~Total, data = critic_afinn_sentiment_scores)
+summary(Movie_Simple_LR_AFINN)
+```
+
+
+####IX. Conclusions
+
+Given the analysis above, we cannot reject the null hypothesis that the senitment of a NY Times movie review has no effect on the box revenue of that review.  The caveat to this analysis is that the sentiment is based on words used in the review.  NY Times movie reviews included summaries of the movie itself. Also, their reviews are very sublte and nuanced. Rarely do their reviews use hyperbolic language about the movie.  Looking at the word cloud below for the top grossing films of 2018, you don't see hyperbolic words used to either praise or demean the movie. 
+
+Even with that said, the findings of this project show that a NY Times movie review is not a predictor of box office success. 
+
+
+```{r, warning=FALSE}
+
+
+dev.new(width = 1000, height = 1000, unit = "px")
+top25 <- Movies %>% 
+          filter(Rank <= 34) %>% 
+          unnest_tokens(word, Review) %>%
+          anti_join(stop_words) %>%
+          distinct() %>%
+          filter(!word %in% undesirable_words) %>% 
+          filter(nchar(word) > 3) %>% 
+          inner_join(get_sentiments("bing")) %>%
+          count(word, sentiment, sort = TRUE) %>% 
+          filter(n > 3) %>% 
+          arrange(desc(n)) 
+
+
+
+
+    
+```
+
+
+```{r, warning=FALSE}
+library(wordcloud2)
+library(reshape2)
+top25  %>% 
+       acast(word ~ sentiment, value.var = "n", fill = 0) %>%
+            comparison.cloud(colors = c("red", "blue"),
+                   max.words = 500) 
+```
+
+
+
+
+
+
+####X. Citations
+
+1. [Machine Learning and NLP using R: Topic Modeling and Music Classification by Debbie Liske](https://www.datacamp.com/community/tutorials/ML-NLP-lyric-analysis)
+2. [NLP Tutorial](https://www.datacamp.com/community/tutorials/R-nlp-machine-learning)
+4. [Text Mining with R by Julia Silge and David Robinson](https://www.tidytextmining.com/)
+
+

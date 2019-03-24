@@ -1,0 +1,838 @@
+---
+title: "P4-Explore and Summarize Data with R Final Project John K. Hancock "
+author: "John K. Hancock -- jkhancock@gmail.com"
+date: "January 16, 2017 (Originally submitted December 26,2016)"
+output: html_document
+---
+
+```{r global_options, include=FALSE}
+knitr::opts_chunk$set(fig.width=12, fig.height=8, fig.path='Figs/',
+                      echo=FALSE, warning=FALSE, message=FALSE)
+```
+# 2012 NY Presidential Contribution Data Analysis
+ 
+
+## Overview
+This report provides a  graphical analysis of donations made to U.S. presidential candidates in 2012 by NY States residents of the state of NY. The report is organized as follows
+
+Introduction to the Data Set - An overview of the Federal Elections Commission dataset for NY state donors to the 2012 Presidential Candidates
+
+Part One - A Univariate Analysis of the Contribution Amount -  NY State Donors
+
+Part Two - Bivariate Analysis of The Four Presidential Nominees 
+
+Part Three - Multivariate Analysis of the Zip Codes in the dataset
+
+Part Four - Predicting contribution amounts based on number of donors
+
+Final Summary of Findings
+
+
+### Set up the Global Environment for Analysis
+Ensure that the environment is looking in the correct directory.
+```{r Set the directory }
+setwd('C:/Users/jkhancock/Documents/Udacity/Data Analysis with R/Final Project/P4-Esplore and Summarize Data with R')
+
+```
+
+### Set up the libraries to be used in this report
+
+```{r Set the libraries and load the data into a frame }
+suppressMessages(library(ggplot2))
+suppressMessages(library('gridExtra'))
+suppressMessages(library(dplyr))
+suppressMessages(library(reshape2))
+suppressMessages(library(lattice))
+suppressMessages(library(MASS))
+suppressMessages(library(memisc))
+
+```
+
+
+# Introduction to the Dataset
+
+```{r Read in the csv file from the Federal Elections Commission }
+NYDonors <- read.csv('P00000001-NY.csv')
+```
+
+```{r A quick check of the data}
+str(NYDonors)
+```
+## Summary of the Dataset
+ 
+The data consists of 420,359 observations across 19 variables. The cmte_id variable is for each candidate's presidential campaign committee. These are set up so that the candidates can receive campaign contributions, and it shows that it has 14 levels each representing a candidate. Other variables of interest include, "cand_nm", which is the name of the candidate, "contbr_city", the contributor's city, and "contbr_zip", the contributor's zip code.  
+
+What the dataset does not contain is more detailed demographic data about the contributors, e.g. gender, age, race, educational levels, income levels, etc.  This means that the analysis in this report will be very shallow. The report won't be able to detail what kind of person donates to presidential campaigns.  However, the report will show the locations of the donors and how the number of donations play a part in the total donations. 
+
+
+# Part One - A Univariate Analysis
+
+```{r}
+summary(NYDonors$contb_receipt_amt)
+```
+
+Looking at a summary of the contribution amounts reveal something unusual.  It shows the min and max values of -$60,800 and $60,800.  Looking into the file we see that the donation was reversed.  According to the Federal Elections Committee website, presidential campaign donations are limited to $2700 per individual per election.  Primaries and the General election account for two unique elections. For the purpose of this analysis I will create a new dataframe and limit the contb_receipt_amt to $2,700.00 or less. We do not want to include contributions which exceeded the legal limit and was re-designated for other purposes.
+
+```{r}
+NYDonors <- NYDonors[NYDonors$contb_receipt_amt > 0 & NYDonors$contb_receipt_amt <= 2700, ]
+
+```
+
+Restricting the analysis to legal campaign contribution amounts show that the number of observations drop to 414,741
+
+```{r}
+str(NYDonors)
+```
+
+
+A new summary of the contribution amounts show that the average contribution was $232.50, and the median contribution was $55.00.
+
+```{r}
+summary(NYDonors$contb_receipt_amt)
+```
+
+Initial Histogram plot which shows the amounts contributed limited by the legal maximum donation, $2,700.00.
+
+```{r}
+ggplot(data = NYDonors, aes(x=contb_receipt_amt)) +
+  geom_histogram() +
+  ggtitle("Part One: 2012 Total Contributions to All Presidential Candidates\n
+          (limited by $2700.00)\n") + 
+  xlab("\nContribution Amounts") +
+  ylab("No. of Contributions\n")
+```
+
+
+After adjusting the binwidth and the x-axis, I can see that the contribution amounts were skewed with the majority of the contributions being $100 or less. Also note that this histogram shows a number of outlier donations right at the legal limit.
+
+
+```{r}
+ggplot(data = NYDonors, aes(x = contb_receipt_amt )) +
+  geom_histogram(binwidth = 100,  color = 'black', fill = '#099DD9') +
+  scale_x_continuous(limits = c(0, 3000), breaks = seq(0, 3000, 600))+
+  ggtitle("Part One: 2012 Total Contributions to All Presidential Candidates\n
+          (limited by $2700.00)\n") + 
+  xlab("\nContribution Amounts") +
+  ylab("No. of Contributions\n")
+```
+Looking at the plots, we see that the data is over-dispersed.  Most of the contriibution amounts are $100 or less. 
+
+```{r}
+summary(NYDonors$contb_receipt_amt)
+
+summary(log10(NYDonors$contb_receipt_amt+1))
+
+summary(sqrt(NYDonors$contb_receipt_amt))
+```
+
+Transforming the scale of the x-axis to a log10 gives us a more normal distribution of the contributions.
+
+
+```{r}
+p1 <- qplot(data = NYDonors, x = contb_receipt_amt )
+p2 <- qplot(data = NYDonors, x = log10(contb_receipt_amt + 1))
+p3 <- qplot(data = NYDonors, x = sqrt(contb_receipt_amt))
+
+grid.arrange(p1, p2, p3, ncol=1)
+ 
+```
+
+By applying a scale_x_log10 layer to the data transforms the contribution receipt data into a normal distribution. We can confirm that approx 300,000 contributions of the 414,741 were less than or equal to $100.
+
+
+```{r}
+ggplot(aes(x=contb_receipt_amt), data =  NYDonors ) +
+  geom_histogram(binwidth = .5, color = 'black', fill = '#099DD9') +
+  scale_x_log10(breaks=c(10,100,1000)) +
+   ggtitle("Part One: 2012 Total Contributions to All Presidential Candidates\n
+          (limited by $2700.00)\n") +
+  xlab("Contribution amounts-- Scaled by Log10\n") +
+  ylab("No. of Contributions\n")
+```
+
+To confirm this, I created a new data frame for contributions of $100 or less and we that there are 299,577 observations.
+
+```{r}
+NY_Donors_LT_100 <- NYDonors[NYDonors$contb_receipt_amt <= 100, ]
+str(NY_Donors_LT_100)
+```
+
+
+## Introducing a new variable - Party Affilitation 
+
+There are 14 candidates in the donors dataset: 1 Democrat, 1 Libertarian, 1 Green Party candidate, and 11 Republicans. I am going to create a new variable, "party_affl", to record the party affiliation for each candidate. The party function below uses a "switch" statement to assign a political party to the candidate.
+
+```{r}
+party <- function(x){
+  switch(x,
+      "Obama, Barack" = "Democrat",
+      "Johnson, Gary Earl" = "Libertarian",
+      "Stein, Jill" = "Green Party",
+      return("Republican")
+  )
+  
+}
+
+```
+A quick test shows that the function matches party affilitation to the candidate.
+
+```{r}
+print(party("Obama, Barack"))
+print(party("Johnson, Gary Earl"))
+print(party("Stein, Jill"))
+print(party("Roemer, Charles E. 'Buddy' III"))
+```
+
+ So, we add the variable to the dataframe.
+
+```{r}
+NYDonors <- NYDonors[order(NYDonors$cand_nm),] 
+
+NYDonors$party_affl[NYDonors$cand_nm == "Stein, Jill"] <- party( "Stein, Jill") 
+NYDonors$party_affl[NYDonors$cand_nm == "Johnson, Gary Earl"] <- party( "Johnson, Gary Earl") 
+NYDonors$party_affl[NYDonors$cand_nm == "Obama, Barack"] <- party( "Obama, Barack") 
+NYDonors$party_affl[NYDonors$cand_nm == "Bachmann, Michele"] <- party( "Bachmann, Michele") 
+NYDonors$party_affl[NYDonors$cand_nm == "Cain, Herman"] <- party( "Cain, Herman") 
+NYDonors$party_affl[NYDonors$cand_nm == "Gingrich, Newt"] <- party( "Gingrich, Newt") 
+NYDonors$party_affl[NYDonors$cand_nm == "Huntsman, Jon"] <- party( "Huntsman, Jon") 
+NYDonors$party_affl[NYDonors$cand_nm == "McCotter, Thaddeus G"] <- party( "McCotter, Thaddeus G") 
+NYDonors$party_affl[NYDonors$cand_nm == "Paul, Ron"] <- party( "Paul, Ron") 
+NYDonors$party_affl[NYDonors$cand_nm == "Pawlenty, Timothy"] <- party( "Pawlenty, Timothy") 
+NYDonors$party_affl[NYDonors$cand_nm == "Perry, Rick"] <- party( "Perry, Rick") 
+NYDonors$party_affl[NYDonors$cand_nm == "Roemer, Charles E. 'Buddy' III"] <- party( "Roemer, Charles E. 'Buddy' III") 
+NYDonors$party_affl[NYDonors$cand_nm == "Romney, Mitt"] <- party( "Romney, Mitt") 
+NYDonors$party_affl[NYDonors$cand_nm == "Santorum, Rick"] <- party( "Santorum, Rick") 
+
+```
+
+We now see that there is an additional variable to the dataset
+
+```{r}
+str(NYDonors)
+```
+
+###Table of donors by party affiliation
+
+
+```{r}
+table(NYDonors$party_affl)
+```
+
+Given that the Democrats and Republicans have far larger donor bases, I will separate them out of the analysis from the other two parties. The plot below shows the political affliation of the donors.  Even though there were 11 Republican candidates and only one Democratic candidate, the Democrats had over 4 times the number of donors than the Republicans. 
+
+
+```{r}
+ggplot(data = subset(NYDonors[NYDonors$party_affl == 'Republican' | NYDonors$party_affl == 'Democrat', ]), aes(x=party_affl)) +
+  geom_bar(aes(factor(party_affl)), color = 'black', fill = '#099DD9') +
+  scale_y_continuous(limits = c(0, 350000), breaks = seq(0, 350000, 75000)) +
+  ggtitle("Part One: 2012 Political Party Affiliations\n") + 
+  xlab("\nDemocrats and Republicans Only") +
+  ylab("No. of Contributions\n")
+```
+
+
+The number of donors to the Green Party and Libertarians was not significant to the dataset. The Libertarians got more than double the amount of the Green Party, but contributions to both parties was not very significant. 
+
+```{r}
+ggplot(data = subset(NYDonors[NYDonors$party_affl == 'Green Party' | NYDonors$party_affl == 'Libertarian', ]), aes(x=party_affl)) +
+  geom_bar(aes(factor(party_affl)), color = 'black', fill = '#099DD9') +
+  scale_y_continuous(limits = c(0, 500), breaks = seq(0, 500, 50)) +
+  ggtitle("Part One: 2012 Political Party Affiliations\n") + 
+  xlab("\nGreen Party and Libertarians Only") +
+  ylab("No. of Contributions\n")
+```
+
+## Part One Summary of key findings - Univariate Analysis
+
+* **How many NY state residents contributed money to presidential candidates in 2012?** 
+
+Using the legal limit of $2,700, a total of 414,741 NY state residents donated to 14 different presidential candidates in 2012. This report cannot say what this total amount of donors represents. This total  would have to be compared with the total amount from other states to put into proper perspective.  
+
+* **What is the mean and median contributed amounts by NY state residents  to presidential candidates in 2012?** 
+
+The mean amount was $232.50, and the median amount was $55. 
+
+* **Was the data skewed?**
+
+Yes, we saw that the nearly 300,000 of the 414,741 contributions were $100 or less, and we also saw a significant number of donors at the legal limit.
+
+
+* **What was learned after the contribution amounts were scaled by log10?** *
+
+We saw a normal distribution of the data which confirmed that the bulk of the contributions was $100 or less. 
+
+* **What was learned about the political affiliation of the donors?** *
+
+The plots show that party affiliation was a major for which party got the most donations. Democrats got 80% of all donations, and the Republicans got 19%.  The two other parties got less than 1%. 
+
+
+
+# PART TWO - Bivariate Analysis  - Party Affiliation and Contributions
+
+## Histogram Comparison of the total donation amounts based on party affilitation.
+
+```{r}
+ggplot(data = subset(NYDonors[NYDonors$party_affl == 'Democrat' | NYDonors$party_affl == 'Republican', ]), aes(x = contb_receipt_amt )) +
+  geom_histogram(binwidth = 30, aes(fill  = party_affl)) +
+  scale_x_continuous(limits = c(0, 3000), breaks = seq(0, 3000, 500)) +
+  ggtitle("Part Two: 2012 Political Party Donations\n
+          (Republican and Democrats)\n") +
+  xlab("\nContribution Amounts\n") +
+  ylab("\nNo. of Contributions\n")
+```
+
+
+
+
+```{r}
+ggplot(data = subset(NYDonors[NYDonors$party_affl == 'Libertarian' | NYDonors$party_affl == 'Green Party', ]), aes(x = contb_receipt_amt )) +
+  geom_histogram(binwidth = 30, aes(fill = party_affl)) +
+  scale_x_continuous(limits = c(0, 3000), breaks = seq(0, 3000, 300)) +
+  scale_y_continuous(limits = c(0, 500), breaks = seq(0, 500, 50)) +
+  ggtitle("Part Two: 2012 Political Party Donations\n
+          (Green Party and Libertarians)\n") +
+  xlab("\nContribution Amounts\n") +
+  ylab("\nNo. of Contributions\n")
+```
+
+
+Comparing the two histograms, we can see that the Democrats and Republicans clearly got the most donations in terms of both amounts and number of contributions. The Democratic party collected $51,381,561.00 and the Republicans collected $44,858,263. Meanwhile, the Libertarians only collected $151,141.40 and the Green Party came in last at $40,471.53
+
+
+```{r}
+by(NYDonors$contb_receipt_amt, NYDonors$party_affl, sum)
+```
+
+## Box plots comparison for contributions based on party affiliation
+
+The box plots below compare the contributions for the Democrats and Republicans.  This plot shows that the Democrats had a lower average donation and many more outlier donations than did the Republicans.
+
+
+```{r}
+ggplot(data = subset(NYDonors[NYDonors$party_affl == 'Democrat' | NYDonors$party_affl == 'Republican', ]), aes(x=party_affl, y=contb_receipt_amt)) +
+  geom_boxplot() +
+  scale_y_log10() +
+  stat_summary(fun.y = mean, geom = 'point', shape=4) +
+  ylab("\nContributions\n") +
+  xlab("\nParty Affiliation\n") +
+  ggtitle("\nBox Plots for Party Affilitation and Donations\n")
+```
+
+On a much smaller scale, the Green Party and Libertarians had approximately the same average donations with little to no outliers. 
+
+
+```{r}
+ggplot(data = subset(NYDonors[NYDonors$party_affl == 'Green Party' | NYDonors$party_affl == 'Libertarian', ]), aes(x=party_affl, y=contb_receipt_amt)) +
+  geom_boxplot() +
+  scale_y_continuous(limits = c(0,500))+
+  stat_summary(fun.y = mean, geom = 'point', shape=4) +
+  ylab("\nContributions\n") +
+  xlab("\nParty Affiliation\n") +
+  ggtitle("\nBox Plots for Party Affilitation and Donations\n")
+```
+
+
+## Frequency plots -- "Star Fleet" logo
+
+The plots below show the percentage of donors who donated the average donations for the Republicans and Democrats. The same plot is done for the Libertarians and the Green Party. 
+```{r}
+ggplot(aes(x = mean(contb_receipt_amt), y = ..count../sum(..count..)), data = subset(NYDonors[NYDonors$party_affl == 'Democrat' | NYDonors$party_affl == 'Republican', ]) ) +   geom_freqpoly(aes(color = party_affl), binwidth=300) + 
+  scale_x_continuous(limits = c(0, 3000), breaks = seq(0, 3000, 300)) + 
+  xlab('\nAverage Contribution Amounts\n') + 
+  ylab('\nPercentages\n') +
+  ggtitle("\nPercentage of Contributors who Donated the Mean\n")
+
+```
+
+
+```{r}
+ggplot(aes(x = mean(contb_receipt_amt), y = ..count../sum(..count..)), data = subset(NYDonors[NYDonors$party_affl == 'Libertarian' | NYDonors$party_affl == 'Green Party', ]) ) +   geom_freqpoly(aes(color = party_affl), binwidth=300) + 
+  scale_x_continuous(limits = c(0, 3000), breaks = seq(0, 3000, 300)) + 
+  xlab('\nAverage Contribution Amounts\n') + 
+  ylab('\nPercentages\n') +
+  ggtitle("\nPercentage of  Contributors who Donated the Mean\n")
+```
+
+
+## Creating a new data frame for the 4 presidential nominees
+
+In 2012, the nominees for president were Mitt Romney (Republican), Barack Obama (Democrat), Jill Stein (Green Party), and Gary Johnson (Libertarian). We will start by creating a new data frame just for these four candidates
+
+```{r}
+NY_Donors.Pres_Nominees_Only <- subset(NYDonors[NYDonors$cand_nm == "Romney, Mitt" | NYDonors$cand_nm == "Obama, Barack" | NYDonors$cand_nm == "Stein, Jill" | NYDonors$cand_nm == "Johnson, Gary Earl", ])
+```
+
+```{r}
+table(NY_Donors.Pres_Nominees_Only$cand_nm)
+```
+
+In the new data frame, the other Republican candidates have been removed.  The box plot below shows that Barack Obama (Democrat) had the lowest average contribution amount. 
+
+```{r}
+ggplot(data = NY_Donors.Pres_Nominees_Only, aes(x=cand_nm, y=contb_receipt_amt)) +
+  geom_boxplot() +
+  scale_y_log10() +
+  stat_summary(fun.y = mean, geom = 'point', shape=4) +
+  ylab("\n2012 Contributions\n") +
+  xlab("\nParty Affiliation\n") +
+  ggtitle("\nBox Plots for Presidential Candidates\n")
+
+```
+
+## Conditional Means.  
+
+Creating a data frame that summarizes data per candidate per city.
+
+```{r}
+NYDonors.Contributions_by_Candidates_City <- NY_Donors.Pres_Nominees_Only %>%
+              group_by (cand_nm, contbr_city) %>%
+              summarise(contribution_average = mean(contb_receipt_amt),
+                        contribution_median = median(contb_receipt_amt),
+                        contribution_std_dev = sd(contb_receipt_amt),
+                        contribution_sum = sum(contb_receipt_amt),
+                        n = n()) %>%
+               arrange(cand_nm)
+                        
+head(NYDonors.Contributions_by_Candidates_City)
+
+```
+
+## Scatter plot
+
+When we plot the average contribution against the number of contributions per city and color the points by candidate, we see that the data is highly skewed by the fact that Obama received over 116,000 donations just from New York city alone.  In order to get a better understanding of the average donation per city to each candidate, we will adjust the plotting to get a closer examination. 
+
+```{r}
+ggplot(data=NYDonors.Contributions_by_Candidates_City, aes(x=contribution_average, y=n )) +
+  geom_point(aes(color=cand_nm)) +
+  scale_y_continuous(limits = c(1, 120000), breaks = seq(1, 120000, 10000)) +
+  scale_x_continuous(limits = c(0, 2500), breaks = seq(0, 2500, 500)) +
+  ylab("\nNumber of Contributions\n") +
+  xlab("\nAverage Contribution\n") +
+  ggtitle("\nAverage Contributions per City \n")
+
+```
+Adjusted contributions per city based on average. This new scatter plot shows that the Obama had lower average contributions per city, but he had a higher number of contributors per city.  The reverse is true for Mitt Romney who had a much higher average contribution per city, but a lower number of donations per city. Jill Stein had both a low average per city contribution and a low number of contributions per city, and Gary Johnson had very low numbers of donors per city.. 
+
+```{r}
+ggplot(data=NYDonors.Contributions_by_Candidates_City, aes(x=contribution_average, y=n )) +
+  geom_point(aes(color=cand_nm)) +
+  scale_y_continuous(limits = c(1, 1000), breaks = seq(1, 1000, 100)) +
+  scale_x_continuous(limits = c(0, 2500), breaks = seq(0, 2500, 500)) +
+  ylab("\nNumber of Contributions per City\n") +
+  xlab("\nAverage Contribution\n")+
+  ggtitle("\nAverage Contributions per City \n")
+```
+We can see this more clearly by doing a facet wrap on the candidates names
+
+
+```{r}
+ggplot(data=NYDonors.Contributions_by_Candidates_City, aes(x=contribution_average, y=n )) +
+  geom_point(aes(color=cand_nm)) +
+  scale_y_continuous(limits = c(1, 1000), breaks = seq(1, 1000, 100)) +
+  scale_x_continuous(limits = c(0, 2500), breaks = seq(0, 2500, 500)) +
+  ylab("\nNumber of Contributions per City\n") +
+  xlab("\nAverage Contribution\n") +
+  facet_wrap(~cand_nm)
+```
+Contributions per city based on median
+```{r}
+ggplot(data=NYDonors.Contributions_by_Candidates_City, aes(x=contribution_median, y=n )) +
+  geom_point(aes(color=cand_nm)) +
+  scale_y_continuous(limits = c(0, 2500), breaks = seq(1, 2500, 100)) +
+  scale_x_continuous(limits = c(0, 2500), breaks = seq(0, 2500, 500)) +
+  ylab("\nNumber of Contributions per City\n") +
+  xlab("\nMedian Contribution\n")
+```
+
+```{r}
+ggplot(data=NYDonors.Contributions_by_Candidates_City, aes(x=contribution_median, y=n )) +
+  geom_point(aes(color=cand_nm)) +
+  scale_y_continuous(limits = c(0, 2500), breaks = seq(0, 2500, 500)) +
+  scale_x_continuous(limits = c(0, 2500), breaks = seq(0, 2500, 500)) +
+  ylab("Number of Contributions per City") +
+  xlab("Median Contribution") +
+  facet_wrap(~cand_nm)
+```
+
+Correlation between Number of Contributions per city and the total amount of contributions.  Is there a correlation between the total amount of donations per city and the number of donations per city?
+
+```{r}
+ggplot(data=NYDonors.Contributions_by_Candidates_City, aes(x=n, y=contribution_sum )) +
+  geom_point(aes(color=cand_nm)) +
+  geom_smooth(se=TRUE) +
+  scale_x_continuous(limits = c(0, 1200), breaks = seq(0, 1200, 200)) +
+  scale_y_continuous(limits = c(10, 150000), breaks = seq(10, 150000, 10000)) + 
+  ylab("Sum of Contributions") +
+  xlab("Number of Contributions per City")
+  
+```
+ 
+```{r}
+cor.test(NYDonors.Contributions_by_Candidates_City$n, NYDonors.Contributions_by_Candidates_City$contribution_sum)
+```
+There's a strong correlation between the number of donations and the total amounts donated.  
+
+
+```{r}
+ggplot(data=NYDonors.Contributions_by_Candidates_City, aes(x=n, y=contribution_sum )) +
+  geom_point(aes(color=cand_nm)) +
+  scale_x_continuous(limits = c(0, 1200), breaks = seq(0, 1200, 200)) +
+  scale_y_continuous(limits = c(10, 150000), breaks = seq(10, 150000, 10000)) + 
+  ylab("Sum of Contributions") +
+  xlab("Number of Contributions per City") +
+  facet_wrap(~cand_nm)
+```
+
+## Part Two Summary of key findings - Bivariate Analysis
+
+* **Does party affiliation have an impact on the total donation amounts?** 
+
+Yes.  Donations to the Democrats and the Republicans totaled: $96,239,824, and donations to the other two parties was $191,612.93
+
+
+* **What is the mean and median contribution amounts to each party in 2012?** 
+
+Democrats: $153.86
+Republican: $558.69
+Green Party: $285.01
+Libertarian: $417.52
+
+* **What presidential candidate had the lowest average donation?** 
+Barack Obama had the lowest average, but he also had the most outlier donations as the box plots showed.
+
+* **What presidential candidate had the lowest average donation per city?**
+This new scatter plot shows that the Obama had lower average contributions per city, but he had a higher number of contributors per city.  The reverse is true for Mitt Romney who had a much higher average contribution per city, but a lower number of donations per city. Jill Stein had both a low average per city contribution and a low number of contributions per city, and Gary Johnson had very low numbers of donors per city.
+
+
+* **Was there a correlation between the number of contributions per city and the total amount of contributions? **
+The cor.test function showed that there was a strong correlation between the number of donations to a candidate and the total sum.  
+
+* **How many NY state residents contributed money to presidential candidates in 2012?** 
+
+Using the legal limit of $2,700, a total of 414,741 NY state residents donated to 14 different presidential candidates in 2012. This report cannot say what this total amount of donors represents. This total  would have to be compared with the total amount from other states to put into proper perspective.  
+
+* **What is the mean and median contributed amounts by NY state residents  to presidential candidates in 2012?** 
+
+The mean amount was $232.50, and the median amount was $55. 
+
+* **Was the data skewed?**
+
+Yes, we see from the histogram that the vast majority of the contributions were $100 or less.
+
+
+* **What was learned after the contribution amounts were scaled by log10?** *
+
+We saw a normal distribution of the data which shows that the bulk of the contributions (over 150,000) was around $100
+
+* **What is the political affiliation of the donors?** *
+
+We see that 333,945 donated to the Democrats, 142 to the Green Party, 362 to the Libertarians, and 80,292 to the Republican. On a percentage basis, 80.5% of the donations went to the Democrats, 19.4% went to the Republicans, and less than 1% of the donations went to the Libertarians and Greens. The plots show that party affiliation is a major driver of which party gets the most donations.
+
+
+#  PART THREE -  MULTIVARIATE ANALYSIS
+
+In this section, we will normalize the Zip codes. In the current dataset, some of the zip codes are Zip+5, and others are not. To normalize, we take the first five digits of the zip code and convert it to an integer. 
+
+```{r}
+NYDonors$Zips <-  strtoi(substring(NYDonors$contbr_zip,0,5))
+NY_Donors.Pres_Nominees_Only$Zips <-  strtoi(substring(NY_Donors.Pres_Nominees_Only$contbr_zip,0,5))
+```
+## Line plots 
+
+The follwing four line plots compare the average contribution amounts per zip codes for each of the four presidential candidates. For the state of New York, zip codes range from 10001 to 14925. 
+
+```{r}
+ggplot(data=NY_Donors.Pres_Nominees_Only, aes(x=Zips, y=contb_receipt_amt )) +
+  geom_line(aes(color=cand_nm), stat = 'summary', fun.y=mean) +
+  scale_y_continuous(limits = c(0, 3000), breaks = seq(0, 3000, 1000)) +
+  scale_x_continuous(limits = c(10000, 15000), breaks = seq(10000, 15000, 2000)) + 
+  facet_wrap(~cand_nm) +
+  xlab("\nZip Codes\n") +
+  ylab ("\nAverage Contribution Amounts\n")
+```
+
+These plots show that Mitt Romney had the highest average campaign contributions across all Zip codes in the state.  
+
+## Adding a new variable for each range of zip code. 
+
+Putting the Zips into Ranges for the presidential nominees.  The following code puts the zips into buckets per county in NY state. These ranges will be in a new variable called Zips.ranges into the 
+
+```{r}
+NY_Donors.Pres_Nominees_Only$Zips.ranges <- cut(NY_Donors.Pres_Nominees_Only$Zips, c(12007,
+14029,
+10451,
+13737,
+14041,
+13021,
+14048,
+14814,
+13124,
+12901,
+12017,
+13040,
+12167,
+12501,
+14001,
+12851,
+12914,
+12025,
+14005,
+12015,
+12108,
+13324,
+13601,
+11201,
+13305,
+14414,
+13032,
+14410,
+12010,
+11001,
+10001,
+14008,
+13054,
+13020,
+14424,
+10910,
+14098,
+13028,
+12064,
+10509,
+11004,
+12018,
+10301,
+10901,
+12922,
+12019,
+12008,
+12031,
+14805,
+13065,
+14529,
+12701,
+13732,
+13053,
+12401,
+12801,
+12809,
+13143,
+10501,
+14009,
+14415))
+```
+
+## New York City - Manhattan analysis.  
+
+```{r}
+table(NY_Donors.Pres_Nominees_Only$Zips.ranges)
+```
+
+## The first range on the list above covers Manhattan.  The plot below shows
+
+```{r}
+ggplot(data=subset(NY_Donors.Pres_Nominees_Only[NY_Donors.Pres_Nominees_Only$Zips.range=='(10001,10301]', ]), aes(x=Zips, y=contb_receipt_amt )) +
+  geom_line(aes(color=cand_nm), stat = 'summary', fun.y=mean) +
+  scale_y_continuous(limits = c(0, 3000), breaks = seq(0, 3000, 1000)) +
+  scale_x_continuous(limits = c(10000, 10300), breaks = seq(10000, 10300, 100)) +
+  facet_wrap(~cand_nm, ncol=2) +
+  xlab("\nZip Codes\n") +
+  ylab ("\nAverage Contribution Amounts\n
+        ") +
+  ggtitle("\nManhattan Zip Codes\n")
+```
+
+## Summarizing the data by party affiliation and the Zips ranges
+
+Let's summarize the data based on party affiliation and zip codes for each county in NY state. The table shows the mean, median, standard deviation, sum, and the numer of donations ("n") per NY county.
+
+```{r}
+NYDonors.Contributions_to_Candidates_by_County <- NY_Donors.Pres_Nominees_Only %>%
+              group_by (party_affl, Zips.ranges) %>%
+              summarise(contribution_average = mean(contb_receipt_amt),
+                        contribution_median = median(contb_receipt_amt),
+                        contribution_std_dev = sd(contb_receipt_amt),
+                         contribution_sum = sum(contb_receipt_amt),
+                        n = n()) %>%
+               arrange(party_affl)
+                       
+summary(NYDonors.Contributions_to_Candidates_by_County)
+
+```
+
+## Re-Shape the data
+```{r}
+NYDonors.Contributions_to_Candidates_by_County.wide <- dcast(NYDonors.Contributions_to_Candidates_by_County,
+                                                             Zips.ranges~party_affl,
+                                                             value.var = 'contribution_average')
+
+
+```
+
+The plot below shows a ratio between the median Romney contribution amount to that of Obama across all counties in NY state.  There were 7 counties where Romney's median was at least 5 times that of Obama. 
+
+
+```{r}
+ggplot(data = NYDonors.Contributions_to_Candidates_by_County.wide, aes(x=Republican/Democrat, y=Zips.ranges))+
+  geom_point(aes(col=Republican, alpha=.25)) +
+  ylab('\nNY Counties\n')  +
+  xlab('\nRomney Median vs Obama Median\n')
+ 
+```
+
+## Correlation
+
+As stated in Part two, we saw that there was a direct correlation between the number of donations that Obama got and the total amount donated to him.  IOW, Obama relied on a large base of donors to match the donation amounts that Romney received from a relatively smaller base. In the plot below, we see that the more donations Obama received in New York city, the higher his total donations. I fit in a linear regression line in the model. 
+
+### Obama
+
+```{r}
+ggplot(data=subset (NYDonors.Contributions_by_Candidates_City[NYDonors.Contributions_by_Candidates_City$cand_nm=='Obama, Barack', ]), aes(x=n, y=contribution_sum )) +
+  geom_point(aes(color=cand_nm)) +
+  geom_smooth(se=TRUE, method = 'lm') +
+  scale_x_continuous(limits = c(0, 1200), breaks = seq(0, 1200, 200)) +
+  scale_y_continuous(limits = c(10, 150000), breaks = seq(10, 150000, 10000)) + 
+  ylab("Sum of Contributions") +
+  xlab("Number of Contributions per City")
+```
+The same is not true for Romney.  His total donations from New York city rose even though his total donors stayed relatively the same. 
+
+### Romney
+
+```{r}
+ggplot(data=subset (NYDonors.Contributions_by_Candidates_City[NYDonors.Contributions_by_Candidates_City$cand_nm=='Romney, Mitt', ]), aes(x=n, y=contribution_sum )) +
+  geom_point(aes(color=cand_nm)) +
+  geom_smooth(se=TRUE) +
+  scale_x_continuous(limits = c(0, 400), breaks = seq(0, 400, 40)) +
+  scale_y_continuous(limits = c(10, 150000), breaks = seq(10, 150000, 10000)) + 
+  ylab("\nSum of Contributions\n") +
+  xlab("\nNumber of Contributions per City\n")
+
+```
+
+
+To examine this further, let's create two new dataframes just for Obama. The second dataframe summarises his campaign donations.
+
+
+```{r}
+NYDonors_Obama <-subset (NY_Donors.Pres_Nominees_Only[NY_Donors.Pres_Nominees_Only$cand_nm=='Obama, Barack', ])
+```
+
+```{r}
+NYDonors_Obama.Contributions_by_County <- NYDonors_Obama %>%
+              group_by (cand_nm, party_affl, Zips) %>%
+              summarise(contribution_average = mean(contb_receipt_amt),
+                        contribution_median = median(contb_receipt_amt),
+                        contribution_std_dev = sd(contb_receipt_amt),
+                         contribution_sum = sum(contb_receipt_amt),
+                        n = n()) %>%
+               arrange(cand_nm)
+```
+
+Now, we'll run a correlation test to see if the contribution sum correlates to the number of contributions, and the results show that it does. 
+
+```{r}
+cor.test(NYDonors_Obama.Contributions_by_County$contribution_sum, NYDonors_Obama.Contributions_by_County$n)
+```
+
+* **Which presidential nominee had the highest average contribution per zip code?** 
+Mitt Romney had the highest average contribution amount per zip code according the line plot even though he had less total number of donors. 
+
+* **Which presidential nominee had the highest average contribution per Manhattan zip codes (range from 10000 to 10300)?** 
+Again, Mitt Romney had the highest average contribution per Manhattan zip code. 
+
+* **Is there a correlation between the number of contributions and the total amount of contributions?** 
+For Obama, yes, there was a strong correlation between the number of donations and the total amount of donations. However for Romney, there wasn't a correlation. 
+
+
+## Part Three Summary of key findings - Multivariate Analysis
+
+* **Which presidential nominee had the highest average contribution per zip code?** 
+Mitt Romney had the highest average contribution amount per zip code according the line plot even though he had less total number of donors. 
+
+* **Which presidential nominee had the highest average contribution per Manhattan zip codes (range from 10000 to 10300)?** 
+Again, Mitt Romney had the highest average contribution per Manhattan zip code. 
+
+* **Is there a correlation between the number of contributions and the total amount of contributions?** 
+For Obama, yes, there was a strong correlation between the number of donations and the total amount of donations. However for Romney, there wasn't a correlation. 
+
+
+
+# PART FOUR --  Predicting contribution amounts based on number of donors.
+Finally, we will build a prediction model based on the number of contributors and the Zip codes to see if we can predict the contribution sum. The R-squared value (.9) of our model shows a tight fit to the regression line. 
+
+
+
+
+```{r}
+m1 <-  lm(I(contribution_sum) ~ I(n), data = NYDonors_Obama.Contributions_by_County)
+m2 <- update(m1, ~. + Zips)
+mtable(m2)
+```
+
+
+
+```{r}
+contribution_sum = data.frame(n=2162, Zips = 10036)
+modelEstimate = predict(m1, newdata = contribution_sum,
+                        interval = "prediction", level =.95)
+modelEstimate
+```
+
+## Part Four --  Three key plots
+
+**Unforunately, the model does not accurately predict the contribution sum.  Entering the number of contributors (2160) and the Zip code (10036)into the model does not predict the contribution sum for that zip code which is outside the confidence interval.** 
+
+
+# Final Summary and Three Key Plots
+
+## Barack Obama
+
+1. Even though Barack Obama was the only Democrat in the 2012 presidential race and there were 11 Republicans in the same race, he still had more donors than all other Republicans combined by a ratio of 3.75 to 1. 
+
+```{r}
+ggplot(data = subset(NYDonors[NYDonors$party_affl == 'Republican' | NYDonors$party_affl == 'Democrat', ]), aes(x=party_affl)) +
+  geom_bar(aes(factor(party_affl)), color = 'black', fill = '#099DD9') +
+  scale_y_continuous(limits = c(0, 350000), breaks = seq(0, 350000, 75000)) +
+  ggtitle("Obama Gets More Donations by 3.75 to 1\n") + 
+  xlab("\nPolitical Party") +
+  ylab("No. of Contributions\n")
+```
+
+
+2. However Obama's lead in total donors did not raise his average donations. Republicans had a higher donor average while Obama relied on an extreme number of outlier donations.
+
+
+```{r}
+ggplot(data = subset(NYDonors[NYDonors$party_affl == 'Republican' | NYDonors$party_affl == 'Democrat', ]), aes(x=party_affl, y=contb_receipt_amt)) +
+  geom_boxplot() +
+  scale_y_log10() +
+  stat_summary(fun.y = mean, geom = 'point', shape=4) +
+  ylab("\nContribution Amount (USD)\n") +
+  xlab("\nParty Affiliation\n") +
+  ggtitle("\nObama's Average Donations Trailed Competitors\n")
+```
+
+3. Mitt Romney, Obama's chief rival for the presidency, and the other 10 Republicans vying for the presidency got just over 80,000 donors, but Romney's average donations were higher than Obama's which means that Romney relied upon bigger donations from a smaller donation base. Mitt Romney received $41,603,237 in donations from NY state from an entire donor base of about 80,000. Barack Obama, the lone Democrat in the race, received $51,381,561 from a donor base of over 300,000. 
+
+```{r}
+ggplot(data=NYDonors.Contributions_by_Candidates_City, aes(x=n, y=contribution_sum )) +
+  geom_point(aes(color=cand_nm)) +
+  scale_x_continuous(limits = c(0, 1200), breaks = seq(0, 1200, 200)) +
+  scale_y_continuous(limits = c(10, 150000), breaks = seq(10, 150000, 10000)) + 
+  ylab("\nTotal Contribution Amount (USD)\n") +
+  xlab("\nNumber of Contributions in the City\n") +
+  ggtitle("\nRomney's Big Money Donors\n") +
+  facet_wrap(~cand_nm)
+```
+
+## Summary
+
+The most consistent point that these plots show is that a Republican nominee for president can get nearly the same amount of donations from NY state than the Democratic nominee even with far less donors. The Republicans rely on a smaller donor base than do the Democrats to achieve these results.  The second most important summary is that party affiliation drives donations. Minor political parties like the Libertarians and Green parties were unable to come close to the donors nor donation amounts of the Republicans and Democrats. 
+
+
+
+# Final Reflections
+
+The dataset was not very robust in that there was little to no details about the donors.  For example, there was no demographic data about the donors, age, income, gender, education level, etc.  Without such data, the analysis was very shallow. The course provided me with the tools to contruct the plots.  However, I was disappointed with not being able to get the prediction model to work.  A future project would be to try to get the model to work by gathering more data about the donors. 
+
+
